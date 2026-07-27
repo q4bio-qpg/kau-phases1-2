@@ -1,0 +1,194 @@
+@inproceedings{LSH2002,
+author = {Charikar, Moses S.},
+title = {Similarity estimation techniques from rounding algorithms},
+year = {2002},
+isbn = {1581134959},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/509907.509965},
+doi = {10.1145/509907.509965},
+abstract = {(MATH) A locality sensitive hashing scheme is a distribution on a family $F$ of hash functions operating on a collection of objects, such that for two objects x,y, PrhεF[h(x) = h(y)] = sim(x,y), where sim(x,y) ε [0,1] is some similarity function defined on the collection of objects. Such a scheme leads to a compact representation of objects so that similarity of objects can be estimated from their compact sketches, and also leads to efficient algorithms for approximate nearest neighbor search and clustering. Min-wise independent permutations provide an elegant construction of such a locality sensitive hashing scheme for a collection of subsets with the set similarity measure sim(A,B) = frac{|A ∩ B|}{|A ∪ B|}.(MATH) We show that rounding algorithms for LPs and SDPs used in the context of approximation algorithms can be viewed as locality sensitive hashing schemes for several interesting collections of objects. Based on this insight, we construct new locality sensitive hashing schemes for:A collection of vectors with the distance between → over u and → over v measured by \O{}(→ over u, → over v)/π, where \O{}(→ over u, → over v) is the angle between → over u) and → over v). This yields a sketching scheme for estimating the cosine similarity measure between two vectors, as well as a simple alternative to minwise independent permutations for estimating set similarity.A collection of distributions on n points in a metric space, with distance between distributions measured by the Earth Mover Distance (EMD), (a popular distance measure in graphics and vision). Our hash functions map distributions to points in the metric space such that, for distributions P and Q, EMD(P,Q) ≤ EhεF [d(h(P),h(Q))] ≤ O(log n log log n). EMD(P, Q).},
+booktitle = {Proceedings of the Thiry-Fourth Annual ACM Symposium on Theory of Computing},
+pages = {380–388},
+numpages = {9},
+location = {Montreal, Quebec, Canada},
+series = {STOC '02}
+}
+
+@INPROCEEDINGS{OptimalLSH2006,
+  author={Andoni, Alexandr and Indyk, Piotr},
+  booktitle={2006 47th Annual IEEE Symposium on Foundations of Computer Science (FOCS'06)}, 
+  title={Near-Optimal Hashing Algorithms for Approximate Nearest Neighbor in High Dimensions}, 
+  year={2006},
+  volume={},
+  number={},
+  pages={459-468},
+  keywords={Nearest neighbor searches;Data structures;Image databases;Spatial databases;Approximation algorithms;Probes;Decoding;Lattices;Data compression;Data mining},
+  doi={10.1109/FOCS.2006.49}}
+
+@inproceedings{AngularLSH2015,
+ author = {Andoni, Alexandr and Indyk, Piotr and Laarhoven, Thijs and Razenshteyn, Ilya and Schmidt, Ludwig},
+ booktitle = {Advances in Neural Information Processing Systems},
+ editor = {C. Cortes and N. Lawrence and D. Lee and M. Sugiyama and R. Garnett},
+ pages = {},
+ publisher = {Curran Associates, Inc.},
+ title = {Practical and Optimal LSH for Angular Distance},
+ url = {https://proceedings.neurips.cc/paper_files/paper/2015/file/2823f4797102ce1a1aec05359cc16dd9-Paper.pdf},
+ volume = {28},
+ year = {2015}
+}
+
+@ARTICLE{survey2016,
+  author={Wang, Jun and Liu, Wei and Kumar, Sanjiv and Chang, Shih-Fu},
+  journal={Proceedings of the IEEE}, 
+  title={Learning to Hash for Indexing Big Data—A Survey}, 
+  year={2016},
+  volume={104},
+  number={1},
+  pages={34-57},
+  keywords={Big data;Artificial neural networks;Binary codes;Indexing;Semantics;Tagging ;Twitter;Approximate nearest neighbor (ANN) search;deep learning;learning to hash;semisupervised learning;supervised learning;unsupervised learning},
+  doi={10.1109/JPROC.2015.2487976}}
+
+@misc{page_Andoni,
+  author = {Alexandr Andoni},
+  title = {LSH Algorithm and Implementation (E2LSH)},
+  url = {https://www.mit.edu/~andoni/LSH/},
+}
+
+@misc{page_LWJ,
+  author = {Wu-Jun Li},
+  title = {Learning to Hash},
+  url = {https://cs.nju.edu.cn/lwj/L2H.html},
+}
+
+@article{QSD2009,
+  title = {Quantum state discrimination},
+  volume = {1},
+  ISSN = {1943-8206},
+  url = {http://dx.doi.org/10.1364/AOP.1.000238},
+  DOI = {10.1364/aop.1.000238},
+  number = {2},
+  journal = {Advances in Optics and Photonics},
+  publisher = {Optica Publishing Group},
+  author = {Barnett,  Stephen M. and Croke,  Sarah},
+  year = {2009},
+  month = feb,
+  pages = {238}
+}
+
+@article{QSD2015,
+  title = {Quantum state discrimination and its applications},
+  volume = {48},
+  ISSN = {1751-8121},
+  url = {http://dx.doi.org/10.1088/1751-8113/48/8/083001},
+  DOI = {10.1088/1751-8113/48/8/083001},
+  number = {8},
+  journal = {Journal of Physics A: Mathematical and Theoretical},
+  publisher = {IOP Publishing},
+  author = {Bae,  Joonwoo and Kwek,  Leong-Chuan},
+  year = {2015},
+  month = jan,
+  pages = {083001}
+}
+
+@article{shadow2017,
+  title = {Shadow Tomography of Quantum States},
+  volume = {49},
+  ISSN = {1095-7111},
+  url = {http://dx.doi.org/10.1137/18M120275X},
+  DOI = {10.1137/18m120275x},
+  number = {5},
+  journal = {SIAM Journal on Computing},
+  publisher = {Society for Industrial & Applied Mathematics (SIAM)},
+  author = {Aaronson,  Scott},
+  year = {2020},
+  month = jan,
+  pages = {STOC18--368--STOC18--394}
+}
+
+@article{shadow2020,
+  title = {Predicting many properties of a quantum system from very few measurements},
+  volume = {16},
+  ISSN = {1745-2481},
+  url = {http://dx.doi.org/10.1038/s41567-020-0932-7},
+  DOI = {10.1038/s41567-020-0932-7},
+  number = {10},
+  journal = {Nature Physics},
+  publisher = {Springer Science and Business Media LLC},
+  author = {Huang,  Hsin-Yuan and Kueng,  Richard and Preskill,  John},
+  year = {2020},
+  month = jun,
+  pages = {1050–1057}
+}
+
+@article{shadow2022,
+  title = {Provably efficient machine learning for quantum many-body problems},
+  volume = {377},
+  ISSN = {1095-9203},
+  url = {http://dx.doi.org/10.1126/science.abk3333},
+  DOI = {10.1126/science.abk3333},
+  number = {6613},
+  journal = {Science},
+  publisher = {American Association for the Advancement of Science (AAAS)},
+  author = {Huang,  Hsin-Yuan and Kueng,  Richard and Torlai,  Giacomo and Albert,  Victor V. and Preskill,  John},
+  year = {2022},
+  month = sep 
+}
+
+@article{PGM1994,
+  title = {A ‘Pretty Good’ Measurement for Distinguishing Quantum States},
+  volume = {41},
+  ISSN = {1362-3044},
+  url = {http://dx.doi.org/10.1080/09500349414552221},
+  DOI = {10.1080/09500349414552221},
+  number = {12},
+  journal = {Journal of Modern Optics},
+  publisher = {Informa UK Limited},
+  author = {Hausladen,  Paul and Wootters,  William K.},
+  year = {1994},
+  month = dec,
+  pages = {2385–2390}
+}
+
+@article{PGM2007,
+  title = {On the Distinguishability of Random Quantum States},
+  volume = {273},
+  ISSN = {1432-0916},
+  url = {http://dx.doi.org/10.1007/s00220-007-0221-7},
+  DOI = {10.1007/s00220-007-0221-7},
+  number = {3},
+  journal = {Communications in Mathematical Physics},
+  publisher = {Springer Science and Business Media LLC},
+  author = {Montanaro,  Ashley},
+  year = {2007},
+  month = mar,
+  pages = {619–636}
+}
+
+@article{MQSD2019,
+  title = {Multiple-copy state discrimination of noisy qubits},
+  volume = {100},
+  ISSN = {2469-9934},
+  url = {http://dx.doi.org/10.1103/PhysRevA.100.032122},
+  DOI = {10.1103/physreva.100.032122},
+  number = {3},
+  journal = {Physical Review A},
+  publisher = {American Physical Society (APS)},
+  author = {Flatt,  Kieran and Barnett,  Stephen M. and Croke,  Sarah},
+  year = {2019},
+  month = sep 
+}
+
+@article{Mele2024,
+  title = {Introduction to Haar Measure Tools in Quantum Information: A Beginner's Tutorial},
+  volume = {8},
+  ISSN = {2521-327X},
+  url = {http://dx.doi.org/10.22331/q-2024-05-08-1340},
+  DOI = {10.22331/q-2024-05-08-1340},
+  journal = {Quantum},
+  publisher = {Verein zur Forderung des Open Access Publizierens in den Quantenwissenschaften},
+  author = {Mele,  Antonio Anna},
+  year = {2024},
+  month = may,
+  pages = {1340}
+}

@@ -1,0 +1,619 @@
+\documentclass[pra,twocolumn,superscriptaddress,longbibliography]{revtex4-2}
+\usepackage[a4paper, left=0.8in, right=0.8in, top=1.0in, bottom=1.0in]{geometry}
+
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{amsmath}
+\usepackage{url}
+\usepackage{graphicx}
+
+\usepackage[braket, qm]{qcircuit}
+
+\usepackage{mathtools}
+\DeclarePairedDelimiter\ceil{\lceil}{\rceil}
+\DeclarePairedDelimiter\floor{\lfloor}{\rfloor}
+
+\newtheorem{definition}{Definition}
+\newtheorem{theorem}{Theorem}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{problem}{Problem}
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+
+
+\newcommand{\ea}[1]{\begin{align}#1\end{align}}
+\newcommand{\eat}[2]{\begin{alignat}{#1} #2\end{alignat}}
+\newcommand{\nn}{\nonumber \\}
+\newcommand{\la}{\langle}
+\newcommand{\ra}{\rangle}
+\newcommand{\mcl}{\mathcal}
+\newcommand{\mbf}{\mathbf}
+\newcommand{\mbb}{\mathbb}
+\newcommand{\mrm}{\mathrm}
+\newcommand{\bmp}{\begin{pmatrix}}
+\newcommand{\emp}{\end{pmatrix}}
+\newcommand{\vpu}[1]{^{\vphantom{#1}}}
+\DeclareMathOperator{\tr}{Tr}
+\DeclareMathOperator{\vect}{vec}
+\DeclareMathOperator{\ebr}{ebr}
+\DeclareMathOperator{\len}{len}
+\DeclareMathOperator{\ch}{\mcl{C}}
+\DeclareMathOperator{\rank}{Rank}
+\DeclareMathOperator{\GL}{GL}
+\DeclareMathOperator{\Gal}{Gal}
+\DeclareMathOperator{\rel}{Re}
+\DeclareMathOperator{\sgn}{Sign}
+\DeclareMathOperator{\argmax}{argmax}
+\DeclareMathOperator{\var}{\mathrm{Var}}
+\DeclareMathOperator{\lsh}{LSH}
+\DeclareMathOperator{\mom}{\mcl{M}}
+
+\newcommand{\kket}[1]{|#1\rangle\!\rangle}
+\newcommand{\bbra}[1]{\langle\!\langle#1|}
+\newcommand{\bbrakket}[2]{\langle\!\langle#1 \rvert #2\rangle\!\rangle}
+
+\numberwithin{equation}{section}
+
+\begin{document}
+
+\title{Learnable Quantum Projections for state-vector similarity search}
+\author{Sergii Strelchuk and Danylo Yakymenko}
+\date{}
+
+\begin{abstract}
+We propose an algorithm for solving the state-vector similarity search problem: 
+given a database of pure quantum states with exact classical descriptions and multiple copies of a pure query state, 
+return a state from the database that has approximately maximal fidelity with the query state. 
+The algorithm is based on selecting a set of projections represented by shallow quantum circuits with trainable parameters, 
+computing locality-sensitive hashes from projections' outputs for each state in the database, 
+and learning the parameters that help the hashes better discriminate among the states in the database. 
+% In principle, the algorithm could work for both very large databases (billions of states) and very small ones, comprising only a few states, with an arbitrary amount of qubits. 
+We present theoretical grounds for this approach along with the results of our simulation experiments using this method. 
+The results indicate that it could be a practical solution for use on currently available NISQ devices in some scenarios.
+
+{\it Keywords}: 
+vector similarity search, vector database, approximate nearest neighbor, locality-sensitive hashing,
+random projection, dimensionality reduction, quantum machine learning, quantum state discrimination.
+\end{abstract}
+
+\maketitle
+
+\section{Introduction}
+In the era of rising AI technologies, databases of high-dimensional vectors have become ubiquitous 
+due to their ability to encode any kind of information, 
+whether it is text, images, media, or any structured data. 
+Finding vectors similar to a given one in a database of vectors is thus the cornerstone of information retrieval tasks. 
+However, this problem becomes increasingly computationally challenging as database sizes and vector dimensionality increase.
+During past decades, many efforts have been put onto this problem and numerous methods have been developed. 
+One particular technique, known as the locality-sensitive hashing (LSH) \cite{LSH2002}, will be most relevant to our work. 
+The main idea of the LSH is to map high-dimensional vectors to strings of bits, 
+where each bit is likely to be same for close vectors. 
+The Hamming distance between the bit strings then corresponds to the similarity between vectors, 
+and one can use the hashes for the search. 
+A simple way to construct LSH is based on the use of random projections, 
+which define hyperplanes that split the entire vector space into two halves. 
+Each hash bit indicates which half a vector falls into. 
+We refer to \cite{OptimalLSH2006, AngularLSH2015} as examples of the evolution of this method. 
+Given a database of vectors, the selected projections can greatly affect the search performance, 
+so one can try to learn how to select them in the optimal way.
+This is known as data-dependent hashing, 
+the survey \cite{survey2016} gives an overview of such learning techniques.
+An interested reader can find a collection of resources devoted to the LSH methods on the webpages \cite{page_Andoni, page_LWJ}. 
+
+Quantum computing, on the other hand, has the potential to make significant contributions to the machine learning field 
+due to its ability to represent high-dimensional vectors as quantum states of many-qubit systems and operate on them efficiently. 
+The state similarity search problem is also closely related to the quantum state discrimination \cite{QSD2009, QSD2015} 
+and quantum tomography in general, 
+with applications extending beyond machine learning to areas like quantum cryptography. 
+In comparison to the classical case, the quantum case depends on the number of copies of the query state available. 
+Thankfully, with the invention of the shadow tomography in \cite{shadow2017}, 
+we don't have to fully reconstruct a state to be able to predict many of the values of target observables. 
+The shadow tomography was later improved in \cite{shadow2020} (see also the follow-up \cite{shadow2022}) 
+where authors proposed the classical shadows algorithm, 
+which requires only a logarithmic number of measurements in the number of target observables 
+to predict their values up to some error. 
+In particular, this allows to predict fidelities between the query state and the states in the database, 
+which makes the similarity search possible. 
+We will argue, however, that our proposed algorithm could perform better than classical shadows approach for the similarity search problem. 
+
+More specifically, the problem we consider is the following: 
+
+\begin{problem}[Main problem] \label{prob:main}
+Let $\mcl{H} = \mbb{C}^d, d = {2^q}$, be a Hilbert space representing a quantum system with $q$ qubits.
+Given a database of pure quantum states $\ket{v_1}, \dots, \ket{v_N} \in \mcl{H}$ with exact classical descriptions
+and multiple copies of a pure query state $\ket{u}$, 
+find a state in the database that has approximately maximal fidelity $|\ip{u}{v_i}|^2$ with the query state. 
+Try to minimize the total number of quantum and classical operations used by the algorithm.
+\end{problem}
+
+If only a single copy of the query state is given, then this essentially becomes the quantum state discrimination problem 
+(even though we do not assume that $\ket{u}$ is exactly one of the states $\ket{v_i}$). 
+The ``pretty good measurement'' (PGM) \cite{PGM1994, PGM2007}, defined as a positive operator-valued measure (POVM) with elements 
+$\{\rho^{-1/2}\op{v_i}{v_i}\rho^{-1/2}\}$, where $\rho = \frac{1}{N}\sum_i\op{v_i}{v_i}$, 
+provides a sufficiently good recipe for the solution. 
+However, in general, a POVM implementation requires an exponential number of primitive gates, and it produces only a probabilistic answer.
+Thus, PGM may not be optimal in practice, especially when multiple copies of the query state $\ket{u}$ are available. 
+In what follows, we do not impose any restrictions on the number of copies of the query state $\ket{u}$, 
+although such a restriction is implicit since it affects the overall complexity of the algorithm $-$ which is our main concern.
+One can find resources devoted to the multi-copy quantum state discrimination 
+(see, e.g., \cite{MQSD2019} and references therein), 
+though they mostly focus on schemes that are optimal with regard to the discrimination error, 
+independently of the implementation complexity. 
+
+The main idea of our algorithm is based on the following observation:
+
+\begin{theorem}[Main theorem] \label{thm:main}
+Let $\ket{v}$ be a state in $\mcl{H}$, 
+$P$ be a projection onto some $d_s$ dimensional subspace 
+such that $\melem{v}{P}{v} = l$, 
+and $\ket{u}$ be a Haar random state with the fixed fidelity $|\ip{v}{u}|^2 = f$. Then 
+\begin{align}
+& {\mbb{E}} \melem{u}{P}{u} = \frac{d_s}{d} + \bigg(f - \frac{1}{d}\bigg)\bigg(l - \frac{d_s}{d}\bigg)\frac{d}{d-1}, \\
+& {\var} \melem{u}{P}{u} \le  \frac{(1-f)d}{4(d-1)^2}\bigg( f + \frac{d - 2}{d}\bigg) \le \frac{1}{4d}, 
+\end{align}
+where $\mbb{E}$ and $\var$ denote the expectation and variance, respectively.
+\end{theorem}
+
+Note that without the constrain $|\ip{v}{u}|^2 = f$, one can find that ${\mbb{E}} \melem{u}{P}{u} = \frac{d_s}{d}$ and 
+${\mbb{E}} |\ip{v}{u}|^2 = \frac{1}{d}$. The theorem implies that if $l > \frac{d_s}{d}$ and $f > \frac{1}{d}$ then 
+the expectation ${\mbb{E}} \melem{u}{P}{u}$ is greater than $\frac{d_s}{d}$ with exponentially small variance 
+(which tends to $0$ with the increase of $f$). 
+Thus, the condition $\melem{u}{P}{u} > \frac{d_s}{d}$ becomes a good indicator of the closeness of the states $\ket{v}$ and $\ket{u}$,
+and the higher the fidelity $|\ip{v}{u}|^2$ and the length $\melem{v}{P}{v}$ are, the stronger this indicator is. 
+Similarly, if $\melem{v}{P}{v} < \frac{d_s}{d}$ with $f > \frac{1}{d}$, then ${\mbb{E}} \melem{u}{P}{u} < \frac{d_s}{d}$. 
+In Section \ref{sec:pre} we give an overview of the tools used in the proof of this theorem, with a full proof found in the Appendix. % \ref{sec:proof}. 
+
+The theorem motivates to make the following definition: 
+\begin{definition}[Projection based locality-sensitive hash of a state]\label{def:lsh}
+Given a projection $P$, the locality-sensitive hash function for a state $\ket{v} \in \mcl{H}$ is defined by
+\begin{align}
+\lsh_P(\ket{v}) = \begin{cases}
++1, & \text{if } \melem{v}{P}{v} > \frac{d_s}{d} + \tau, \\
+-1, & \text{if } \melem{v}{P}{v} < \frac{d_s}{d} - \tau, \\
+0, & \text{otherwise},
+\end{cases}
+\end{align}
+where $\tau$ is a small threshold parameter that essentially cuts the cases where $\melem{v}{P}{v}$ is very close to the average.
+
+For a list of projections $P_1,\dots,P_n$, the locality-sensitive hash of $\ket{v}$ is the concatenation of hashes for each projection
+\begin{align}
+\lsh_{P_1,\dots,P_n}(\ket{v}) = (\lsh_{P_1}(\ket{v}),\dots,\lsh_{P_n}(\ket{v})).
+\end{align}
+\end{definition}
+
+Since the variance of $\melem{v}{P}{v}$ for a Haar random $\ket{v}$ is also exponentially small, 
+most of the time $\lsh_P(\ket{v})$ will be $0$ for a meaningful (e.g., greater than $1/\sqrt{d}$) value of threshold $\tau$. 
+However, if the number $N$ of state-vectors $\ket{v_i}$ in a database is large, then, by chance, 
+some of them will have $\lsh_P(\ket{v_i})=\pm 1$. And if we take a sufficiently high number of projections $P_1, \dots, P_n$, 
+then for each vector in the database, we can expect at least a small number of non-zero LSH values. 
+We can vary the threshold $\tau$ to control the number of non-zero LSH values. 
+Additionally, we do not have to pick the projections $P_i$ randomly. 
+We can select them based on the LSH values they produce for the database vectors, 
+or train parametrized projections using an optimization algorithm to maximize the number of non-zero LSH values. 
+The training is particularly useful if the database is small. %, consisting of only a few vectors.
+Speaking of the choice of rank $d_s$ of projections, we have found that $d_s = d/2 = 2^{q-1}$ suits best from a practical perspective. 
+Projections of such a rank can be implemented as unitaries followed by the measurement of a single qubit. 
+To be more efficient, we use one unitary circuit to produce $q$ projections of rank $2^{q-1}$ $-$ corresponding to the measurements of each qubit. 
+
+Having the locality-sensitive hash vectors $\lsh_{P_1, \dots, P_n}(\ket{v})$ 
+for each state $\ket{v}$ in the database, 
+there are multiple ways of how one can use these values for the actual similarity search. 
+More details about our algorithm could be found in Section \ref{sec:algo}.  
+
+In general, on NISQ devices, noise adds volatility and could lead to biases in the output expectations of circuit executions. 
+While volatility can be addressed by increasing the number of execution shots, an expectation bias is a bigger issue since it cannot be easily predicted. 
+This, however, is not a big concern in our algorithm due to its nature $-$ the locality-sensitive hash uses multiple projections, 
+and so the possible biases in their executions should not significantly affect the cumulative locality-sensitive property of the hash. 
+Moreover, a bias in the execution of a particular circuit, if it exists, should be repeatable. 
+This means that if $\lsh_P(\ket{v}) > 0$ for some $\ket{v}$ only due to an execution bias, 
+the same hash value should be obtained for states close to $\ket{v}$ since the bias is likely to be the same. 
+
+In Section \ref{sec:res} we present the results of our simulation experiments, 
+which indicate that the proposed approach could be a practical solution on NISQ devices in some scenarios. 
+In particular, we consider two cases $-$ a database of $100$ thousands $12$-qubit states, 
+for which a selection of random projections with no training were used, 
+and a database of one thousand $20$-qubit states, for which a set of projections was trained. 
+Databases of states on larger amount of qubits have a limited capability in the training of projections since this would not be possible to perform on classical hardware. 
+However, we believe that quantum learning of many-qubit projections will become practical on future quantum devices and so this direction deserves further research.
+
+\section{Operator moments}\label{sec:pre}
+
+To prove our main theorem we need basic facts about the computation of operator moments over the Haar measure on the unitary group. 
+For a thorough introduction to this subject, we refer readers to \cite{Mele2024}.
+
+Let $\mcl{H} = \mbb{C}^d$ be a Hilbert space of dimension $d$, 
+$\mcl{L}(\mcl{H})$ be the space of linear operators on $\mcl{H}$. 
+By $\mcl{U}(d)$ we denote the unitary group acting on $\mcl{H}$, 
+$\mu$ denotes the Haar measure on $\mcl{U}(d)$. 
+The measure $\mu$ also induces a measure on states in $\mcl{H}$ 
+by representing them as $U\ket{0}$ for $U \in \mcl{U}(d)$. 
+
+The $k$-th operator moment of an operator $O \in \mcl{L}(\mcl{H}^{\otimes k})$ with respect to the Haar measure is defined by 
+\begin{align}
+    & \mcl{M}^{(k)}(O) = \mbb{E}_{U \sim \mu} U^{\otimes k}O(U^\dagger)^{\otimes k} \\
+    & = \int_{\mcl{U}(d)} U^{\otimes k}O(U^\dagger)^{\otimes k} {\rm d} \mu.
+\end{align}
+
+The first operator moment equals to
+\begin{align}
+\mcl{M}^{(1)}(O) = \tr(O)I/d 
+\end{align}
+using which one can find that 
+\begin{align*}
+    & {\mbb{E}}_{\ket{u} \sim \mu} \melem{u}{O}{u}
+    = {\mbb{E}}_{U \sim \mu} \tr(UOU^\dagger \op{0}{0})
+    = \tr(O)/d, \\
+% \end{align*}
+% and
+% \begin{align*}
+    & {\mbb{E}}_{\ket{u},\ket{v} \sim \mu} |\ip{u}{v}|^2 
+    = {\mbb{E}}_{\ket{u},\ket{v} \sim \mu} \ip{u}{v}\ip{v}{u} \\
+    & = {\mbb{E}}_{U \sim \mu} \tr(U\op{0}{0}U^\dagger\op{0}{0})
+    = 1/d. 
+\end{align*}
+
+The second operator moment helps in computing the variances of the same quantities. 
+Let us denote by $\mbb{I}$ the identity operator on $\mcl{L}(\mcl{H} \otimes \mcl{H})$, 
+and by 
+\begin{align}
+    \mbb{F} = \sum_{i,j} \ket{i}\ket{i}\bra{j}\bra{i}
+\end{align}
+the flip (swap) operator acting on the same space. 
+It is known that 
+\begin{align}
+    \mcl{M}^{(2)}(O) = c_{\mbb{I}, O} \mbb{I} + c_{\mbb{F}, O}\mbb{F},
+\end{align}
+where 
+\begin{align}
+    & c_{\mbb{I}, O} = \frac{\tr(O) - d^{-1}\tr(\mbb{F}O)}{d^2-1}, \\
+    & c_{\mbb{F}, O} = \frac{\tr(\mbb{F}O) - d^{-1}\tr(O)}{d^2-1}.
+\end{align}
+
+Hence for $O \in \mcl{L}(\mcl{H})$
+\begin{align*}
+    & {\mbb{E}}_{\ket{u} \sim \mu} (\melem{u}{O}{u})^2 \\
+    & = {\mbb{E}}_{U \sim \mu} \tr\big(U^{\otimes 2}O^{\otimes 2}(U^\dagger)^{\otimes 2} (\op{0}{0})^{\otimes 2}\big) \\
+    & = \tr( \mcl{M}^{(2)}(O^{\otimes 2}) (\op{0}{0})^{\otimes 2}) \\
+    & = c_{\mbb{I}, O^{\otimes 2}} + c_{\mbb{F}, O^{\otimes 2}} = \tr(O^{\otimes 2}\frac{\mbb{I} + \mbb{F}}{d(d+1)}).
+\end{align*}
+
+In particular, ${\mbb{E}}_{\ket{u} \sim \mu} |\ip{u}{0}|^4 = \frac{2}{d(d+1)}$. 
+
+TODO: finish section
+% Though, it is known that 
+
+\section{The algorithm description}\label{sec:algo}
+
+As was explained in the introduction, our algorithm requires selecting a list of projections $P_1, \dots, P_n$ and 
+computing the hashes $\lsh_{P_1, \dots, P_n}(\ket{v_i})$ for each state $\ket{v_i}$ in the database. 
+Given multiple copies of a query state $\ket{u}$, we can compute its hash $\lsh_{P_1, \dots, P_n}(\ket{u})$ and use it to 
+find the most similar state $\ket{v_i}$ from the database. 
+A straightforward way of doing it is by computing the Euclidean distances between the hashes of $\ket{u}$ and $\ket{v_i}$ 
+and returning the index $i$ corresponding to the minimal value. A bucketing techniques can be used to make this more efficient. 
+Naturally, all vectors $\ket{v_i}$ with the condition $\lsh_{P_1}(\ket{v_i})=1$ fall into the same group, a bucket. If 
+$\lsh_{P_1}(\ket{u})=1$ for the query state then it makes sense to search for the most similar state within the same bucket first
+(and we can continue the search in other buckets). The use of buckets increases the memory requirements, 
+though other forms of bucketing exists that balance the trade-off between time and memory. 
+Finally, one could simply train a classical neural network that for a given hash predicts the index of the state in the database that 
+has the most similar hash. In essence, one could view the transition from a state to its locality-sensitive hash 
+as a form of dimensionality reduction and thus consider any appropriate algorithms on top of it.
+
+The real question in this approach, though, is how do we pick the projections $P_i$ that give us the most representative hashes. 
+As was mentioned earlier, picking random projections may not be the best choice. For example, if the database is small, 
+let's say it has just two states $\ket{v_1}$, $\ket{v_2}$, then for a random projection $P$ their hashes will be $0$ most of the time 
+if the threshold $\tau$ in the $\lsh$ definition is a multiple of the standard deviation (which is exponentially small).
+If instead we pick $P$ with learnable parameters then we can train it in way that exactly one of the states $\ket{v_1}$, $\ket{v_2}$ 
+has non-zero hash. Then the hash of a query state $\ket{u}$ should tell us what state is closer to $\ket{u}$ with high probability. 
+
+Finding such a projection $P$ may not be possible if the circuits we consider are too shallow.
+Clearly, there is a monotonic relationship between the depth of $P$ and the maximum value of $\melem{v}{P}{v}$ one can achieve. 
+No depth restriction corresponds to the maximum value of $1$, but this could make our algorithm exponentially complex. 
+Moreover, finding depth restricted $P$ is even harder if we want to obtain non-zero hashes for multiple states $\ket{v_i}$ from the database. 
+Nevertheless, we think that it is the way to go in selecting $P_i$ because we have to move $\melem{v_j}{P_i}{v_j}$ 
+only slightly away from the average and only for some of the states in the database. 
+Concerning the above, we define the following main objective in selecting the projections $P_i$:
+
+\begin{definition}[Main objective in selecting $P_i$] \label{def:obj}
+Given a database of states $\ket{v_i}$, in the selection of a set of $n$ projections $\{P_i\}$, that has a fixed depth restriction, 
+we want to maximize the value 
+\begin{align}
+\sum_{i,j} |\lsh_{P_i}(\ket{v_j})|.
+\end{align}
+\end{definition}
+
+Maximizing this objective does not guarantee that two distant vectors will not get the same hashes, but we can use other steps to avoid that possibility. 
+We also want states in the database to be covered evenly by non-zero hash values, 
+that is, $\sum_{i} |\lsh_{P_i}(\ket{v_j})|$ should be approximately same for each $j$.
+
+In the following subsections, we describe ways of how one could achieve this objective. 
+There is one common trick that we use in all of them. 
+To not waste the circuit complexity of the projection implementation, 
+which is just an application of a unitary $U$ and measuring the first qubit, 
+we let each circuit $U$ to produce $q$ projections $\Pi^{(i)}_{U} = U^\dagger \op{0}{0}_i U$, 
+each corresponding to measuring the $i$-th qubit after the application of $U$. 
+
+\subsection{Selection of projections without training}
+
+At first, we describe a simple approach where we don't use any training of projections. 
+This is useful when the database is quite large having at least $O(d)$ elements. 
+
+The algorithm is as follows:
+
+1. Select the threshold value $\tau$. For example, we might want to have about $10\%$ chance of getting 
+$lsh_{P}(\ket{v}) \neq 0$ on average. One can estimate the corresponding $\tau$ by running simulation experiments. 
+The diagram \ref{fig:tau} show the estimated values of $\tau$ for the different number of qubits and threshold percent. 
+
+% 1, 2, 4, 8, 16
+% q 10 12 14 16 18 20
+
+TODO: rewrite random part
+
+1. Pick a random circuit $U_1$ of the maximal allowed depth and measure all qubits for each $U_1\ket{v_j}$ some number of times (say $1000$) 
+to find the estimates $\hat{l}_{1,i,j}$ of the values $l_{1,i,j} = \melem{v_j}{\Pi^{(i)}_{U_1}}{v_j}$. For each qubit $i$, 
+sort the values $\hat{l}_{1,i,j}$ and select the maximal and minimal subsets of some cutoff size 
+(say $5\%$ of the total number of vectors, each). 
+Define $\lsh_{1,i}(\ket{v_j}) = 1$ if $\hat{l}_{1,i,j}$ falls into the maximal subset, 
+$\lsh_{1,i}(\ket{v_j}) = -1$ if $\hat{l}_{1,i,j}$ is in the minimal subset, and set it to $0$ otherwise. 
+This definition of $\lsh$ is slightly different than we gave before because the threshold $\tau$ is implicit and not constant here, 
+but the effect is essentially the same. One could define the average of the implicit values of $\tau$ as some baseline value. 
+
+2. Repeat steps 1 and 2 for some other random unitary $U_2$ and continue to do so until some break condition.  
+This condition could be a limit on the number of unitaries or we could look at the total number of non-zero hash values 
+and judge on that. 
+% 2. Look by how many non-zero hash values each state is covered. 
+% Select half of the database states that are covered by least amount of non-zero hash values. 
+% Repeat steps 1 and 2 to for this half of database (adjust the cutoff size in step 1 appropriately) for the next random unitary $U_2$ and so on. 
+
+% \quad 
+
+% Since on each iteration after the first one we look only at the half of database states
+
+Note that depending on the problem size, this could be done entirely on a simulator. 
+
+\subsection{The basic training}
+
+\subsection{Adaptive training technique}
+
+\section{Results of experiments}\label{sec:res}
+
+% \appendix
+
+\onecolumngrid
+
+\quad 
+
+\section{Acknowledgments}
+
+\quad
+
+\section{Appendix}
+
+\subsection{Proof of the Main Theorem}\label{sec:proof}
+
+\begin{proof}
+Since we are considering the Haar random $\ket{u}$, the distribution of $\melem{u}{P}{u}$ will be the same for pairs 
+$(\ket{v'}, P') = (U\ket{v}, UPU\dagger)$ where $U$ is an arbitrary unitary. 
+It is not hard to derive (either by using Jordan's lemma about two projectors or simply via step-by-step unitary reductions) 
+that any pair $(\ket{v}, P)$ with $\melem{v}{P}{v}=l$, $l \in [0,1]$, 
+is unitary equivalent to $(\ket{v_0}, P_0)$ where  
+\begin{align*}
+& \ket{v_0} = \ket{\bf 0}, ~~P_0 = \bmp P_{2} & 0 \\ 0 & P_{d-2} \emp, \\
+& P_{2} = \bmp l & \sqrt{l(1-l)} \\ \sqrt{l(1-l)} & 1-l\emp, ~P_{d-2} = I_{d_s-1} \oplus {\bf 0}_{d-d_s-1}.\\ 
+\end{align*}
+Without loss of generality, we can prove the theorem only for such pairs $(\ket{v_0}, P_0)$.
+
+Since the fidelity $|\ip{\bf 0}{u}|^2 = f$ is fixed, any such state $\ket{u}$ can be represented as 
+$$
+\sqrt{f}\ket{\bf 0} + \sqrt{1-f}U\ket{\bf 1},
+$$
+where %$\ket{v_0^\perp}$ is some fixed unit vector orthogonal to $\ket{\bf 0}$ and 
+$U = 1 \oplus U_{d-1}$ is an arbitrary unitary that acts non-trivially only on the subspace orthogonal to $\ket{\bf 0}$.
+%with $U_{d-1}\ket{0^q} = \ket{0^q}$. 
+% In other words, $U_{d-1}$ acts non-trivially only on the subspace orthogonal to $\ket{0^q}$. 
+Thus, we assume that $U_{d-1}$ is a Haar random unitary on this subspace. 
+Let's compute the moments over unitaries $U = 1 \oplus U_{d-1}$. 
+Assume $O = \bmp O_{00} & O_{01} \\ O_{10} & O_{11} \emp$ is an arbitrary operator on $\mcl{H}$, 
+% where $O_{00} \in \mbb{C}^{1\times1}$ and $O_{11} \in \mbb{C}^{(d-1)\times (d-1)}$. 
+where $O_{00}$ and $O_{11}$ are matrices of sizes $1\times1$ and $(d-1)\times (d-1)$ respectively. 
+Then 
+\begin{align*}
+    & (1 \oplus U_{d-1}) O (1 \oplus U_{d-1}^\dagger) 
+    = \bmp O_{00} & O_{01} U_{d-1}^\dagger \\ U_{d-1} O_{10} & U_{d-1} O_{11} U_{d-1}^\dagger \emp. 
+\end{align*}
+
+Since ${\mbb{E}} U_{d-1} = 0$ and ${\mbb{E}}U_{d-1} O_{11} U_{d-1}^\dagger = \tr(O_{11})I\frac{1}{d-1}$, we have that 
+
+\begin{align*}
+    & {\mbb{E}}(1 \oplus U_{d-1}) O (1 \oplus U_{d-1}^\dagger) 
+    = \bmp O_{00} & 0 \\ 0 & \tr(O_{11})I\frac{1}{d-1} \emp. 
+\end{align*}
+
+Now we can compute the expectation of $\melem{u}{P_0}{u}$: 
+\begin{align*}
+& {\mbb{E}}\melem{u}{P_0}{u} 
+= {\mbb{E}}\tr\big(P_0 \op{u}{u} \big)
+= \tr\bigg[P_0 \bmp f & 0 \\ 0 & \frac{(1-f)}{d-1}I \emp \bigg] \\
+& = lf + (1-l)\frac{(1-f)}{d-1} + (d_s-1)\frac{(1-f)}{d-1} \\
+& = \frac{d_s}{d} + \big(f - \frac{1}{d}\big)\big(l - \frac{d_s}{d}\big)\frac{d}{d-1}.
+\end{align*}
+
+For the variance we have 
+\begin{align*}
+& \var\melem{u}{P_0}{u} = \mbb{E}\melem{u}{P_0}{u}^2 - (\mbb{E}\melem{u}{P_0}{u})^2, \\
+& \mbb{E}\melem{u}{P_0}{u}^2 
+= \tr(P_0^{\otimes2} \cdot \mbb{E}(\op{u}{u})^{\otimes2}).
+\end{align*}
+
+%The variance calculation 
+This requires us to know how to compute the second reduced moment of an arbitrary operator $O \in \mcl{H}^{\otimes2}$: 
+$$
+\mom_1^{(2)}(O) = \mbb{E}(1 \oplus U_{d-1})^{\otimes2} O (1 \oplus U_{d-1}^\dagger)^{\otimes2}.
+$$  
+To simplify analysis we consider the cases where $O$ is a matrix unit. 
+
+1. Let $O = \op{\bf 00}{\bf 00}$. 
+Then $\mom_1^{(2)}(O) = \op{\bf 00}{\bf 00}$. 
+
+2. Let $O = \op{\bf 00}{\bf 0j}$ where ${\bf j} \in \{1,\dots,d-1\}$. 
+Then
+\begin{align*}
+& \mom_1^{(2)}(O) = \op{\bf 0}{\bf 0} \otimes \ket{\bf 0}\mbb{E}\bra{\bf j} (1\oplus U_{d-1}^\dagger) = 0. 
+\end{align*}
+Similarly, we get $0$ for $\op{\bf 00}{\bf j0}$, $\op{\bf j0}{\bf 00}$ and $\op{\bf 0j}{\bf 00}$.
+
+3. Let $O = \op{\bf 00}{\bf ij}$ where ${\bf i,j} \in \{1,\dots,d-1\}$. 
+Then 
+\begin{align*}
+& \mom_1^{(2)}(O) = \ket{\bf 00}\mbb{E}\bra{\bf ij} (1 \oplus U_{d-1}^\dagger)^{\otimes2} = 0. 
+\end{align*}
+Same for $\op{\bf ij}{\bf 00}$.
+
+4. Let $O = \op{\bf 0i}{\bf 0j}$ where ${\bf i,j} \in \{1,\dots,d-1\}$. 
+Then 
+\begin{align*}
+& \mom_1^{(2)}(O) = \op{\bf 0}{\bf 0} \otimes \mom_1^{(1)}(\op{\bf i}{\bf j}) 
+= \op{\bf 0}{\bf 0} \otimes (0\oplus\ip{\bf i}{\bf j}I\frac{1}{d-1}). 
+\end{align*}
+Similarly for $\op{\bf i0}{\bf j0}$.
+
+5. Let $O = \op{\bf i0}{\bf 0j}$ where ${\bf i,j} \in \{1,\dots,d-1\}$. 
+Then 
+\begin{align*}
+& \mom_1^{(2)}(O) 
+= \sum_{{\bf k}=1}^{d-1}\op{\bf k0}{\bf 0k}\frac{\ip{\bf i}{\bf j}}{d-1}. 
+\end{align*}
+To see this, one can apply the swap operator from the left of $O$, 
+which reduces it to the previous case. 
+Similarly for $O = \op{\bf 0i}{\bf j0}$. 
+
+6. Let $O = \op{\bf 0i}{\bf jk}$ where ${\bf i,j,k} \in \{1,\dots,d-1\}$. 
+
+Using vectorization we get 
+\begin{align*}
+& \vect(\mom_1^{(2)}(O)) 
+= \mbb{E}(1\oplus\overline{U}_{d-1})^{\otimes2}\otimes I \otimes (1\oplus{U}_{d-1}) \vect(\op{\bf 0i}{\bf jk}) \\
+& = \mbb{E}(1\oplus\overline{U}_{d-1})^{\otimes2}\otimes I \otimes (1\oplus{U}_{d-1}) \ket{\bf jk0i} = 0, 
+\end{align*}
+due to Lemma [?]. The same result we get for 
+$\op{\bf i0}{\bf jk}$, $\op{\bf ij}{\bf 0k}$ and $\op{\bf ij}{\bf k0}$. 
+
+7. Let $O = \op{\bf ij}{\bf kl}$ where ${\bf i,j,k,l} \in \{1,\dots,d-1\}$. 
+
+Again, from vectorization and Lemma [?] we get 
+\begin{align*}
+& \vect(\mom_1^{(2)}(O)) 
+% = \mbb{E}(1\oplus\overline{U}_{d-1})^{\otimes2}\otimes (1\oplus{U}_{d-1})^{\otimes2} \ket{\bf klij} \\
+= \mbb{E}(1\oplus\overline{U}_{d-1})^{\otimes2}\otimes (1\oplus{U}_{d-1})^{\otimes2} \kket{O} \\
+& = \frac{1}{(d-1)^2-1}\left[\kket{\mathbb{I}_{d-1}}\bbrakket{\mathbb{I}_{d-1}}{O}-\frac{1}{d-1}\kket{\mathbb{I}_{d-1}}\bbrakket{\mathbb{F}_{d-1}}{O}
+-\frac{1}{d-1}\kket{\mathbb{F}_{d-1}}\bbrakket{\mathbb{I}_{d-1}}{O}+\kket{\mathbb{F}_{d-1}}\bbrakket{\mathbb{F}_{d-1}}{O}\right], 
+\end{align*}
+
+Now, $\bbrakket{\mathbb{I}}{O} = \tr(O) = \ip{\bf i}{\bf k}\ip{\bf j}{\bf l}$ and 
+$\bbrakket{\mathbb{F}}{O} = \tr(\mbb{F}O) = \ip{\bf i}{\bf j}\ip{\bf k}{\bf l}$. 
+Thus 
+\begin{align*}
+& \mom_1^{(2)}(O)
+= \frac{1}{d(d-2)}\left[\mbb{I}_{d-1}(\ip{\bf i}{\bf k}\ip{\bf j}{\bf l} - \frac{\ip{\bf i}{\bf j}\ip{\bf k}{\bf l}}{d-1})
++ \mbb{F}_{d-1}(\ip{\bf i}{\bf j}\ip{\bf k}{\bf l} - \frac{\ip{\bf i}{\bf k}\ip{\bf j}{\bf l}}{d-1})\right].
+\end{align*}
+
+In particular, for $O = \op{\bf 11}{\bf 11}$ we get 
+\begin{align*}
+& \mom_1^{(2)}(\op{\bf 11}{\bf 11})
+= \frac{1}{d(d-1)}\left[\mbb{I}_{d-1} + \mbb{F}_{d-1}\right].
+\end{align*}
+
+We are now prepared to compute $\mbb{E}(\op{u}{u})^{\otimes2}$:  
+\begin{align*}
+& \mbb{E}(\op{u}{u})^{\otimes2}
+= \mbb{E}(1\oplus{U}_{d-1})^{\otimes2}
+\big(f\op{\bf 0}{\bf 0} + (1-f)\op{\bf 1}{\bf 1} + \sqrt{f(1-f)}(\op{\bf 0}{\bf 1} + \op{\bf 1}{\bf 0})\big)^{\otimes2}
+(1\oplus{U}_{d-1}^\dagger)^{\otimes2} \\
+& = f^2\op{\bf 00}{\bf 00} 
++ \frac{(1-f)^2}{d(d-1)}\left[\mbb{I}_{d-1} + \mbb{F}_{d-1}\right] + \\
+& + \frac{f(1-f)}{d-1}\big(\op{\bf 0}{\bf 0} \otimes I_{d-1} + I_{d-1} \otimes \op{\bf 0}{\bf 0} 
++ \sum_{{\bf k}=1}^{d-1}\op{\bf k0}{\bf 0k} + \sum_{{\bf k}=1}^{d-1}\op{\bf 0k}{\bf k0}\big).
+\end{align*}
+
+Note that 
+\begin{align*}
+& P_0^{\otimes2} 
+= \bigg(l\op{\bf 0}{\bf 0} + (1-l)\op{\bf 1}{\bf 1} + \sqrt{l(1-l)}(\op{\bf 0}{\bf 1}+\op{\bf 1}{\bf 0}) 
+    + \sum_{{\bf j}=2}^{d_s}\op{\bf j}{\bf j} \bigg)^{\otimes2}.
+\end{align*}
+
+Then 
+\begin{align*}
+& \tr(P_0^{\otimes2} \cdot \mbb{E}(\op{u}{u})^{\otimes2}) 
+= l^2f^2 + \frac{2(1-l)^2(1-f)^2}{d(d-1)} + \frac{4l(1-l)f(1-f)}{d-1} + \\
+& + \frac{2(d_s-1)lf(1-f)}{d-1} + \frac{2(d_s-1)(1-l)(1-f)^2}{d(d-1)} 
++ \frac{(1-f)^2}{d(d-1)}\big( (d_s-1)^2 + (d_s-1)\big) \\
+& = l^2f^2 + f(1-f)\bigg(\frac{4l(1-l)}{d-1} + \frac{2(d_s-1)l}{d-1} \bigg) 
++ (1-f)^2\bigg(\frac{2(1-l)^2}{d(d-1)} + \frac{2(d_s-1)(1-l)}{d(d-1)} + \frac{d_s(d_s-1)}{d(d-1)}\bigg) \\
+& = l^2f^2 + f(1-f)\frac{l(2d_s+2-4l)}{d-1}
++ (1-f)^2\frac{2(1-l)(d_s-l) + d_s(d_s-1)}{d(d-1)}
+\end{align*}
+
+Recall that 
+\begin{align*}
+& \bigg({\mbb{E}}\melem{u}{P_0}{u}\bigg)^2
+= \bigg(lf + (d_s-l)\frac{(1-f)}{d-1} \bigg)^2 
+= l^2f^2 + (1-f)^2\frac{(d_s-l)^2}{(d-1)^2} + f(1-f)\frac{l(2d_s-2l)}{d-1}
+\end{align*}
+
+Hence 
+\begin{align*}
+& \var\melem{u}{P_0}{u}
+= f(1-f)\frac{2l(1-l)}{d-1}
++ (1-f)^2\bigg(\frac{2(1-l)(d_s-l) + d_s(d_s-1)}{d(d-1)} - \frac{(d_s-l)^2}{(d-1)^2}\bigg) \\
+& = \frac{1-f}{d-1}\bigg( 2fl(1-l)
++ (1-f)\frac{-d_s^2 + d_s((1-2l)(d-1) + 2ld) -2l(1-l)(d-1) - l^2d}{d(d-1)}\bigg) \\
+& = \frac{1-f}{d-1}\bigg( 2fl(1-l) 
++ (1-f)\frac{-d_s^2 + d_s(d+2l-1) - dl(2-l)+ 2l(1-l)}{d(d-1)}\bigg) \\
+% & < \frac{1-f}{d-1}\bigg( 2fl(1-l) 
+% + (1-f)\frac{\frac{1}{4}(d+2l-1)^2 + l^2d}{d(d-1)}\bigg) \\
+& \le \frac{1-f}{d-1}\bigg( f\frac{1}{2}
++ (1-f)\frac{\frac{d^2}{4} + \frac{d(2l-1)}{2} - dl(2-l)+ 2l(1-l)}{d(d-1)}\bigg) \\
+& = \frac{1-f}{d-1}\bigg( f\frac{1}{2}
++ (1-f)\frac{d^2 - 2d(2l(1-l)+1) + 8l(1-l)}{4d(d-1)}\bigg)
+\le \frac{1-f}{d-1}\bigg( f\frac{1}{2}
++ (1-f)\frac{d^2 - 2d}{4d(d-1)}\bigg) \\
+& = \frac{1-f}{d-1}\bigg( f\frac{d}{4(d-1)}
++ \frac{d - 2}{4(d-1)}\bigg) 
+= \frac{(1-f)d}{4(d-1)^2}\bigg( f + \frac{d - 2}{d}\bigg) \\
+& \le \frac{(1-\frac{1}{d})d}{4(d-1)^2}\bigg( \frac{1}{d} + \frac{d - 2}{d}\bigg) 
+= \frac{1}{4d}\\
+% & < \frac{1}{(d-1)}\bigg( \frac{1}{8} + \frac{2d_s + d_s(d_s-1)}{d} - \frac{(d_s-1)^2}{d-1} \bigg) 
+% = \frac{1}{(d-1)}\bigg( \frac{1}{8} + \frac{-d_s^2 + d_s(3d-1) - d}{d(d-1)} \bigg) \\ 
+% & < \frac{1}{(d-1)}\bigg( \frac{1}{8} + \frac{-d^2 + d(3d-1) - d}{d(d-1)} \bigg) 
+% < \frac{17}{8(d-1)},
+\end{align*}
+
+\end{proof}
+
+% Let $f > \frac{1}{d}$ and $l > \frac{d_s}{d}$. Then 
+% \begin{align*}
+% & \tr(P_0^{\otimes2} \cdot \mbb{E}(\op{u}{u})^{\otimes2}) 
+% < l^2f^2 + \frac{2(1-l)^2(d-1)}{d^3} + \frac{4l(1-l)f}{d} + \\
+% & + \frac{2(d_s-1)lf}{d} + \frac{2(d_s-1)(1-l)(d-1)}{d^3} 
+% + \frac{(d-1)}{d^3}\big( d_s(d_s-1)\big) \\
+% % & = 
+% % & = l^2\bigg(f^2 + \frac{2(1-f)^2}{d(d-1)} - \frac{4f(1-f)}{d-1} \bigg) 
+% % + l\bigg( - \frac{4(1-f)^2}{d(d-1)} + \frac{4f(1-f)}{d-1} 
+% %   + \frac{2(d_s-1)f(1-f)}{d-1} - \frac{2(d_s-1)(1-f)^2}{d(d-1)}\bigg) 
+% \end{align*}
+
+
+% \begin{equation}
+% \frac{ - \mathtt{d\_s} + 2 l + d \mathtt{d\_s} - 2 d l - \mathtt{d\_s}^{2} + 2 \mathtt{d\_s} f + 2 \mathtt{d\_s} l - 4 f l - 2 l^{2} - 2 d \mathtt{d\_s} f + 2 d f l + l^{2} d + 2 \mathtt{d\_s}^{2} f - f^{2} \mathtt{d\_s} - 4 \mathtt{d\_s} f l + 2 f^{2} l + 4 l^{2} f + 2 d^{2} f l + f^{2} d \mathtt{d\_s} - f^{2} \mathtt{d\_s}^{2} + 2 f^{2} \mathtt{d\_s} l - 2 l^{2} f^{2} - 2 f^{2} d^{2} l - 2 l^{2} d^{2} f - l^{2} f^{2} d + 2 l^{2} f^{2} d^{2}}{\left( -1 + d \right)^{2} d}
+% \end{equation}
+
+\bibliographystyle{IEEEtran}
+\bibliography{literature.bib}
+% \begin{thebibliography}{10}
+% \end{thebibliography}
+
+
+\end{document}
