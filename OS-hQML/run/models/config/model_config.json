@@ -1,0 +1,11 @@
+{
+    "architecture":{
+        "n_qubits":6,
+        "n_lin_layers":2,
+        "n_quant_layers":4
+        },
+    "training_params":{
+        "extraseq":8,
+        "n_muts":31
+    }
+}
